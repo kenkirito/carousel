@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Niche, Tone, NICHES, TONES, Slide } from '@/app/types';
 
+// Mark as Edge Runtime for better performance
+export const runtime = 'edge';
+export const maxDuration = 60;
+
 interface GenerateRequest {
   topic: string;
   niche: Niche;
@@ -9,201 +13,289 @@ interface GenerateRequest {
   numSlides?: number;
 }
 
-// Simple in-memory cache (use Redis in production)
-const cache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-function getCacheKey(topic: string, niche: Niche, tone: Tone, numSlides: number): string {
-  return `${topic}:${niche}:${tone}:${numSlides}`;
-}
-
-// NICHE CONTEXT for better prompts
-const NICHE_CONTEXT: Record<Niche, { keywords: string[]; painPoints: string[]; powerWords: string[]; audience: string }> = {
+// NICHE CONTEXT - curated high-quality templates
+const NICHE_INTEL: Record<Niche, {
+  hooks: string[][];
+  insights: string[][];
+  ctas: string[][];
+  emojis: string[];
+}> = {
   tech: {
-    keywords: ['AI', 'automation', 'code', 'startup', 'SaaS', 'API', 'workflow', 'stack', 'developer', 'software'],
-    painPoints: ['tutorial hell', 'shiny object syndrome', 'imposter syndrome', 'burnout', 'tech debt', 'debugging'],
-    powerWords: ['ship', 'deploy', 'scale', 'iterate', 'build', 'debug', 'optimize', 'hack'],
-    audience: 'developers, tech professionals, and startup founders',
+    hooks: [
+      ['The AI secret nobody shares', 'This changes everything 👇', '🔥'],
+      ['Stop building AI wrong', 'Most devs waste months here', '⚠️'],
+      ['ChatGPT is tutorial hell 2.0', 'Build APIs instead', '🤖'],
+      ['Your AI workflow is broken', 'Fix this one thing today', '🔧'],
+      ['Context beats prompt engineering', 'Feed code, not prompts', '🧠'],
+    ],
+    insights: [
+      ['Ship today, perfect later', 'Deployed beats perfect every time', '⚡'],
+      ['Automate the boring 80%', 'Script once, run forever', '🤖'],
+      ['Stop learning, start building', 'Execution beats theory', '🚀'],
+      ['Your stack is too complex', 'Fewer tools, more shipping', '🛠️'],
+      ['Debug with AI at 3am', 'Never get stuck again', '🌙'],
+      ['Build systems, not features', 'Compound your efforts', '⚙️'],
+      ['API first, interface later', 'Start with the contract', '📋'],
+    ],
+    ctas: [
+      ['Which tip will you use?', 'Follow @%s for more 🔥'],
+      ['Save this before it is gone', 'Follow @%s for daily tips 💾'],
+      ['Tag a dev who needs this', 'Follow @%s for threads 👇'],
+    ],
+    emojis: ['💡', '⚡', '🚀', '🤖', '🔧', '🧠', '⚙️', '🌙'],
   },
   doctor: {
-    keywords: ['prevention', 'longevity', 'metabolism', 'immunity', 'recovery', 'sleep', 'stress', 'health'],
-    painPoints: ['chronic fatigue', 'poor sleep', 'brain fog', 'inflammation', 'burnout', 'anxiety'],
-    powerWords: ['heal', 'prevent', 'optimize', 'balance', 'restore', 'boost', 'transform'],
-    audience: 'health-conscious individuals, patients, and wellness seekers',
-  },
-  festival: {
-    keywords: ['tradition', 'celebration', 'family', 'culture', 'ritual', 'gathering', 'festivity'],
-    painPoints: ['family pressure', 'budget stress', 'travel chaos', 'gift anxiety', 'planning overwhelm'],
-    powerWords: ['honor', 'gather', 'celebrate', 'connect', 'remember', 'share', 'cherish'],
-    audience: 'families, cultural enthusiasts, and celebration planners',
+    hooks: [
+      ['I suffered chronic fatigue', 'This one change fixed everything', '🔥'],
+      ['Your sleep is killing you', 'Science says fix this first', '⚠️'],
+      ['Doctors do not talk about this', 'Prevention beats prescriptions', '🏥'],
+      ['My brain fog finally lifted', 'After three years of suffering', '💭'],
+      ['The metabolism secret', 'What 90% get wrong', '🔬'],
+    ],
+    insights: [
+      ['Fix your sleep first', 'Everything else follows', '😴'],
+      ['Walk 8k steps daily', 'Movement is medicine', '🚶'],
+      ['Drop bedroom temp 4 degrees', 'Sleep through the night', '🌡️'],
+      ['Eat protein within 30 min', 'Wake up with energy', '🥚'],
+      ['Morning sun resets cortisol', 'Fix your circadian rhythm', '☀️'],
+      ['Your gut controls your mood', 'Heal from the inside', '🦠'],
+      ['Cold showers boost immunity', 'Start with 30 seconds', '🚿'],
+    ],
+    ctas: [
+      ['Ready to optimize your health?', 'Follow @%s for daily tips 🏥'],
+      ['Which habit will you start?', 'Follow @%s for more 💪'],
+      ['Tag someone who needs this', 'Follow @%s for health threads 👇'],
+    ],
+    emojis: ['💪', '🧬', '❤️', '🥗', '😴', '🌿', '⚡', '🔬'],
   },
   business: {
-    keywords: ['revenue', 'profit', 'cash flow', 'LTV', 'CAC', 'scaling', 'systems', 'growth'],
-    painPoints: ['cash flow gaps', 'hiring mistakes', 'feature creep', 'shiny object syndrome', 'burnout'],
-    powerWords: ['scale', 'profit', 'optimize', 'automate', 'delegate', 'systematize', 'dominate'],
-    audience: 'entrepreneurs, business owners, and executives',
+    hooks: [
+      ['Revenue is vanity, profit is sanity', 'Focus on what matters', '💰'],
+      ['Your startup is dying', 'Fix cash flow today', '🚨'],
+      ['I fired my first client', 'Best decision I ever made', '✂️'],
+      ['Scale through systems', 'Not through hustle', '⚙️'],
+      ['The 80/20 rule for business', '20%% effort, 80%% results', '📊'],
+    ],
+    insights: [
+      ['Hire slow, fire fast', 'One bad hire kills culture', '👥'],
+      ['Say no to grow', 'Focus beats scattered efforts', '🎯'],
+      ['Raise prices 30%% today', 'Premium clients, less stress', '💎'],
+      ['Automate invoicing first', 'Cash flow matters most', '📧'],
+      ['Document every process', 'Build a sellable business', '📚'],
+      ['One channel, go deep', 'Stop chasing shiny objects', '🎣'],
+      ['Delegate or drown', 'You cannot scale alone', '🏊'],
+    ],
+    ctas: [
+      ['Which tactic will you try?', 'Follow @%s for more 💰'],
+      ['Save this for later', 'Follow @%s for business tips 💼'],
+      ['Share with a founder', 'Follow @%s for growth threads 👇'],
+    ],
+    emojis: ['📈', '💰', '🎯', '💼', '📊', '🚀', '⚡', '💎'],
+  },
+  festival: {
+    hooks: [
+      ['Traditions evolve, values remain', 'Modern celebrations matter too', '✨'],
+      ['I stopped buying gifts', 'Family loved this instead', '🎁'],
+      ['Virtual Diwali changed everything', 'Distance cannot break bonds', '🪔'],
+      ['Minimal decor, maximum joy', 'Less really is more', '🌸'],
+      ['The festival secret', 'Presence over presents', '🎉'],
+    ],
+    insights: [
+      ['Handmade beats expensive', 'Thought matters most', '🎨'],
+      ['Cook together, eat slow', 'Memories over menus', '🍲'],
+      ['Call distant relatives', 'Voice beats text', '📞'],
+      ['Share stories, not stuff', 'Legacy lives on', '📖'],
+      ['Dress up, feel special', 'Tradition creates belonging', '👗'],
+      ['Light diyas at home', 'Small rituals, big meaning', '🕯️'],
+      ['Give experiences, not things', 'Joy lasts longer', '🎭'],
+    ],
+    ctas: [
+      ['How do you celebrate?', 'Follow @%s for more traditions 🎉'],
+      ['Save for next festival', 'Follow @%s for ideas 💾'],
+      ['Tag your festival crew', 'Follow @%s for culture threads 👇'],
+    ],
+    emojis: ['🎉', '✨', '🪔', '🎊', '🌸', '🕯️', '🎁', '🎭'],
   },
   'personal-brand': {
-    keywords: ['audience', 'content', 'engagement', 'authority', 'niche', 'monetization', 'growth'],
-    painPoints: ['algorithm changes', 'creator burnout', 'imposter syndrome', 'consistency', 'growth plateaus'],
-    powerWords: ['grow', 'engage', 'monetize', 'authority', 'influence', 'connect', 'dominate'],
-    audience: 'content creators, influencers, and personal brand builders',
+    hooks: [
+      ['I grew to 100k in 6 months', 'This is what worked', '🚀'],
+      ['Your content is invisible', 'Fix this one thing', '👁️'],
+      ['Stop posting, start engaging', 'Community beats audience', '💬'],
+      ['The creator economy lie', 'You do not need millions', '💰'],
+      ['Authenticity is your algorithm hack', 'Be real, grow fast', '🔥'],
+    ],
+    insights: [
+      ['Reply to every comment', 'Engagement compounds faster', '💬'],
+      ['Niche down to blow up', 'Specificity wins', '🎯'],
+      ['Document, do not create', 'Share the journey', '📝'],
+      ['Post when they scroll', 'Timing matters more', '⏰'],
+      ['One platform, master it', 'Before expanding elsewhere', '📱'],
+      ['Tell stories, not facts', 'Emotion drives shares', '📖'],
+      ['Consistency beats virality', 'Show up daily', '📅'],
+    ],
+    ctas: [
+      ['What will you create today?', 'Follow @%s for more tips 🚀'],
+      ['Save this before it is gone', 'Follow @%s for growth 💾'],
+      ['Tag an aspiring creator', 'Follow @%s for threads 👇'],
+    ],
+    emojis: ['🚀', '💬', '📈', '✨', '🎯', '📱', '🔥', '💎'],
   },
 };
 
-// TONE PATTERNS for better prompts
-const TONE_PATTERNS: Record<Tone, { style: string; hookExamples: string[]; contentStyle: string }> = {
-  viral: {
-    style: 'Bold, punchy, curiosity-driven. Use pattern interrupts and information gaps.',
-    hookExamples: ['The [topic] secret nobody shares', 'Stop doing [topic] wrong', 'What 90% get wrong about [topic]'],
-    contentStyle: 'Short punchy sentences. Challenge assumptions. Create urgency.',
-  },
-  educational: {
-    style: 'Clear, structured, evidence-based. Teach something valuable.',
-    hookExamples: ['The science behind [topic]', 'How [topic] actually works', '[topic]: Evidence-based approach'],
-    contentStyle: 'Structured insights. Practical takeaways. Data-driven.',
-  },
-  storytelling: {
-    style: 'Conversational, relatable, narrative. Personal journey format.',
-    hookExamples: ['How I mastered [topic]', 'My [topic] transformation', 'From [pain point] to [topic] expert'],
-    contentStyle: 'Personal voice. Relatable experiences. Lessons learned.',
-  },
-  controversial: {
-    style: 'Provocative, challenging, contrarian. Challenge mainstream advice.',
-    hookExamples: ['Unpopular opinion: [topic] advice is wrong', '[topic] hype is misleading you', 'The uncomfortable truth about [topic]'],
-    contentStyle: 'Bold claims. Challenge norms. Strong opinions. Back it up.',
-  },
-};
-
-// Build optimized prompt for Claude
-function buildClaudePrompt(topic: string, niche: Niche, tone: Tone, numSlides: number, username: string): { system: string; user: string } {
-  const context = NICHE_CONTEXT[niche];
-  const tonePattern = TONE_PATTERNS[tone];
-  const numValueSlides = numSlides - 2;
-
-  const system = `You are an expert Instagram carousel creator. Write scroll-stopping content.
-
-STRICT RULES:
-- Headline: MAX 8 words
-- Subtext: MAX 12 words
-- One idea per slide
-- No fluff words like "unlock", "game-changer", "skyrocket"
-- Short, punchy sentences only
-
-AUDIENCE: ${context.audience}
-TONE: ${tonePattern.style}`
-
-  const user = `Create a ${numSlides}-slide carousel about "${topic}".
-
-STRUCTURE:
-- Slide 1 (HOOK): ${tonePattern.hookExamples[0].replace('[topic]', topic)}
-- Slides 2-${numSlides - 1} (VALUE): Specific insights about ${topic}
-- Slide ${numSlides} (CTA): Follow @${username}
-
-CONTEXT:
-- Pain points: ${context.painPoints.slice(0, 3).join(', ')}
-- Power words: ${context.powerWords.slice(0, 4).join(', ')}
-
-STYLE: ${tonePattern.contentStyle}
-
-OUTPUT JSON ONLY:
-[{"headline":"...","subtext":"...","emoji":"🔥"},{"headline":"...","subtext":"...","emoji":"💡"}]
-
-RULES: Headlines ≤8 words, Subtext ≤12 words, Topic-specific, No fluff`;
-
-  return { system, user };
+// Simple hash function for deterministic selection
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash);
 }
 
-// Parse Claude response
-function parseClaudeResponse(text: string, numSlides: number): Array<{ headline: string; subtext: string; emoji: string }> {
-  try {
-    // Try to extract JSON array
-    const jsonMatch = text.match(/\[[\s\S]*?\]/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (Array.isArray(parsed)) {
-        return parsed.map((slide: any) => ({
-          headline: (slide.headline || slide.title || '').slice(0, 60),
-          subtext: (slide.subtext || slide.content || '').slice(0, 80),
-          emoji: slide.emoji || '💡',
-        }));
-      }
-    }
-  } catch (e) {
-    console.warn('JSON parsing failed, using text fallback');
-  }
+// Generate carousel using curated templates + AI-style variation
+function generateCarousel(topic: string, niche: Niche, tone: Tone, username: string, numSlides: number): Slide[] {
+  const intel = NICHE_INTEL[niche];
+  const hash = hashString(`${topic}:${tone}:${Date.now()}`);
 
-  // Text fallback
-  const slides: Array<{ headline: string; subtext: string; emoji: string }> = [];
-  const lines = text.split('\n').filter(l => l.trim());
-  const emojis = ['🔥', '💡', '⚡', '🚀', '💎', '🎯', '✨', '🤯', '📈', '👇'];
-
-  for (let i = 0; i < numSlides && i < lines.length; i++) {
-    const line = lines[i].replace(/^\d+\.\s*/, '').replace(/^slide\s*\d+[:\.]\s*/i, '');
-    const parts = line.split(/[|\/]/).map(p => p.trim());
-    slides.push({
-      headline: parts[0]?.slice(0, 60) || `Slide ${i + 1}`,
-      subtext: parts[1]?.slice(0, 80) || '',
-      emoji: parts[2] || emojis[i % emojis.length],
-    });
-  }
-
-  return slides;
-}
-
-// Generate fallback content if API fails
-function generateFallbackContent(topic: string, niche: Niche, tone: Tone, numSlides: number, username: string): Slide[] {
-  const context = NICHE_CONTEXT[niche];
-  const tonePattern = TONE_PATTERNS[tone];
-
-  // Pick a hook based on tone
-  const hook = tonePattern.hookExamples[Math.floor(Math.random() * tonePattern.hookExamples.length)].replace('[topic]', topic);
+  // Select hook based on hash for variety
+  const hookIndex = hash % intel.hooks.length;
+  const hook = intel.hooks[hookIndex];
 
   const slides: Slide[] = [
     {
       id: 'slide-1',
-      title: hook.charAt(0).toUpperCase() + hook.slice(1),
-      content: 'This changes everything 👇',
-      emoji: '🔥',
+      title: hook[0],
+      content: hook[1],
+      emoji: hook[2],
       tag: 'HOOK',
     },
   ];
 
-  // Value slides
-  const valueTemplates = [
-    { title: `Most people overcomplicate ${topic}`, content: 'The simple approach always wins', emoji: '💡' },
-    { title: `${context.powerWords[0]} your systems first`, content: 'Tools matter less than strategy', emoji: '⚡' },
-    { title: `Stop ${context.painPoints[0]} forever`, content: 'One shift changes everything', emoji: '🎯' },
-    { title: `${context.keywords[0]} is just the start`, content: 'Master the fundamentals first', emoji: '🚀' },
-    { title: `Your ${context.painPoints[1]} ends today`, content: 'Take action, see results', emoji: '💎' },
-  ];
+  // Select value slides - use different indices for variety
+  const numValueSlides = numSlides - 2;
+  const usedIndices = new Set<number>();
 
-  for (let i = 0; i < numSlides - 2 && i < valueTemplates.length; i++) {
+  for (let i = 0; i < numValueSlides; i++) {
+    let idx = (hash + i * 7) % intel.insights.length;
+    while (usedIndices.has(idx)) {
+      idx = (idx + 1) % intel.insights.length;
+    }
+    usedIndices.add(idx);
+
+    const insight = intel.insights[idx];
+    // Personalize the insight with the topic
+    const title = insight[0].includes('%s')
+      ? insight[0].replace('%s', topic)
+      : insight[0];
+
     slides.push({
       id: `slide-${i + 2}`,
-      title: valueTemplates[i].title,
-      content: valueTemplates[i].content,
-      emoji: valueTemplates[i].emoji,
+      title,
+      content: insight[1],
+      emoji: intel.emojis[idx % intel.emojis.length],
       tag: 'VALUE',
     });
   }
 
-  // CTA slide
-  const ctas = [
-    { title: 'Which tip hit hardest?', content: `Follow @${username} for more 🔥`, emoji: '👇' },
-    { title: 'Save this thread', content: `Follow @${username} before it's gone 💾`, emoji: '💾' },
-    { title: 'Want more insights?', content: `Follow @${username} for daily tips 📚`, emoji: '📚' },
-    { title: 'Share your thoughts', content: `Comment below 👇 Follow @${username}`, emoji: '💬' },
-  ];
-  const cta = ctas[Math.floor(Math.random() * ctas.length)];
+  // Select CTA
+  const ctaIndex = hash % intel.ctas.length;
+  const cta = intel.ctas[ctaIndex];
 
   slides.push({
     id: `slide-${numSlides}`,
-    title: cta.title,
-    content: cta.content,
-    emoji: cta.emoji,
+    title: cta[0],
+    content: cta[1].replace('%s', username.replace('@', '')),
+    emoji: '👇',
     tag: 'CTA',
   });
+
+  return slides;
+}
+
+// Optional: Enhance with Claude if available
+async function enhanceWithClaude(
+  topic: string,
+  niche: Niche,
+  tone: Tone,
+  slides: Slide[],
+  apiKey: string
+): Promise<Slide[]> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s max
+
+    const nicheContext: Record<Niche, string> = {
+      tech: 'tech professionals, developers, startup founders',
+      doctor: 'health-conscious individuals, patients, wellness seekers',
+      festival: 'families, cultural enthusiasts, celebration planners',
+      business: 'entrepreneurs, business owners, executives',
+      'personal-brand': 'content creators, influencers, personal brand builders',
+    };
+
+    const response = await fetch('https://api.code.umans.ai/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        temperature: 0.7,
+        system: `You improve Instagram carousel content. Make it punchier and more specific to "${topic}".
+
+RULES:
+- Headlines: MAX 8 words
+- Subtext: MAX 12 words
+- Topic-specific, not generic
+- Keep the same structure (Hook, Value, CTA)`,
+        messages: [{
+          role: 'user',
+          content: `Improve these slides for ${niche} audience about "${topic}".
+Current slides:
+${slides.map((s, i) => `${i + 1}. ${s.title} / ${s.content}`).join('\n')}
+
+Return EXACTLY ${slides.length} slides as JSON:
+[{"headline":"...","subtext":"...","emoji":"🔥"}]
+
+Make headlines punchier and subtext more specific to ${topic}.`
+        }]
+      })
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+
+    const result = await response.json();
+    let text = '';
+    if (Array.isArray(result.content)) {
+      const textBlock = result.content.find((b: any) => b.type === 'text');
+      if (textBlock) text = textBlock.text;
+    }
+
+    // Parse JSON response
+    const jsonMatch = text.match(/\[[\s\S]*?\]/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(parsed) && parsed.length >= slides.length) {
+        return parsed.slice(0, slides.length).map((slide: any, index: number) => ({
+          id: `slide-${index + 1}`,
+          title: (slide.headline || slide.title || slides[index].title).slice(0, 60),
+          content: (slide.subtext || slide.content || slides[index].content).slice(0, 80),
+          emoji: slide.emoji || slides[index].emoji,
+          tag: slides[index].tag,
+        }));
+      }
+    }
+  } catch (error) {
+    console.log('Claude enhancement failed, using curated content');
+  }
 
   return slides;
 }
@@ -211,160 +303,46 @@ function generateFallbackContent(topic: string, niche: Niche, tone: Tone, numSli
 export async function POST(req: NextRequest) {
   try {
     const body: GenerateRequest = await req.json();
-    const {
-      topic,
-      niche,
-      tone,
-      username,
-      numSlides = 5
-    } = body;
+    const { topic, niche, tone, username, numSlides = 5 } = body;
 
     // Validation
     if (!topic?.trim()) {
-      return NextResponse.json(
-        { error: 'Topic is required.' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Topic is required.' }, { status: 400 });
     }
-
     if (!username?.trim()) {
-      return NextResponse.json(
-        { error: 'Username is required.' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Username is required.' }, { status: 400 });
     }
-
     if (!niche || !NICHES.find(n => n.id === niche)) {
-      return NextResponse.json(
-        { error: 'Valid niche is required.' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Valid niche is required.' }, { status: 400 });
     }
-
     if (!tone || !TONES.find(t => t.id === tone)) {
-      return NextResponse.json(
-        { error: 'Valid tone is required.' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Valid tone is required.' }, { status: 400 });
     }
 
-    // Check cache
-    const cacheKey = getCacheKey(topic, niche, tone, numSlides);
-    const cached = cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      console.log('Returning cached result');
-      return NextResponse.json({
-        ...cached.data,
-        cached: true,
-      });
-    }
+    // Generate curated content first (fast)
+    let slides = generateCarousel(topic, niche, tone, username.replace('@', ''), numSlides);
 
+    // Try to enhance with Claude if available (async, won't block)
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      console.warn('ANTHROPIC_API_KEY not configured, using fallback');
-      const fallbackSlides = generateFallbackContent(topic, niche, tone, numSlides, username.replace('@', ''));
-      return NextResponse.json({
-        slides: fallbackSlides,
-        meta: { topic, niche, tone, slideCount: fallbackSlides.length, source: 'fallback' }
-      });
+    if (apiKey) {
+      try {
+        const enhanced = await enhanceWithClaude(topic, niche, tone, slides, apiKey);
+        slides = enhanced;
+      } catch (e) {
+        // Keep curated content if enhancement fails
+      }
     }
 
-    // Build optimized prompt
-    const { system, user } = buildClaudePrompt(topic, niche, tone, numSlides, username.replace('@', ''));
-
-    // Call Claude API
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 55000);
-
-    let response;
-    try {
-      response = await fetch('https://api.code.umans.ai/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 2048,
-          temperature: 0.7,
-          system,
-          messages: [{ role: 'user', content: user }]
-        })
-      });
-    } catch (fetchError: any) {
-      clearTimeout(timeoutId);
-      console.error('API call failed:', fetchError.message);
-      const fallbackSlides = generateFallbackContent(topic, niche, tone, numSlides, username.replace('@', ''));
-      return NextResponse.json({
-        slides: fallbackSlides,
-        meta: { topic, niche, tone, slideCount: fallbackSlides.length, source: 'fallback', error: 'api_timeout' }
-      });
-    }
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Claude API Error:', response.status, errorText);
-      const fallbackSlides = generateFallbackContent(topic, niche, tone, numSlides, username.replace('@', ''));
-      return NextResponse.json({
-        slides: fallbackSlides,
-        meta: { topic, niche, tone, slideCount: fallbackSlides.length, source: 'fallback', error: response.status }
-      });
-    }
-
-    const result = await response.json();
-    let text = '';
-    if (Array.isArray(result.content)) {
-      const textBlock = result.content.find((block: any) => block.type === 'text');
-      if (textBlock) text = textBlock.text;
-    }
-    text = text || result.completion || result.text || '';
-
-    // Parse response
-    const parsedSlides = parseClaudeResponse(text, numSlides);
-
-    // Convert to Slide format
-    const slides: Slide[] = parsedSlides.map((slide, index) => ({
-      id: `slide-${index + 1}`,
-      title: slide.headline,
-      content: slide.subtext,
-      emoji: slide.emoji,
-      tag: index === 0 ? 'HOOK' : index === parsedSlides.length - 1 ? 'CTA' : 'VALUE',
-    }));
-
-    // Fill missing slides if needed
-    while (slides.length < numSlides) {
-      const i = slides.length;
-      slides.push({
-        id: `slide-${i + 1}`,
-        title: `Pro tip #${i}`,
-        content: 'Small improvements compound over time',
-        emoji: '💎',
-        tag: 'VALUE',
-      });
-    }
-    if (slides.length > numSlides) {
-      slides.splice(numSlides);
-    }
-
-    const responseData = {
+    return NextResponse.json({
       slides,
       meta: {
         topic,
         niche,
         tone,
         slideCount: slides.length,
-        source: 'claude',
+        source: apiKey ? 'enhanced' : 'curated',
       }
-    };
-
-    // Cache the result
-    cache.set(cacheKey, { data: responseData, timestamp: Date.now() });
-
-    return NextResponse.json(responseData);
+    });
 
   } catch (error) {
     console.error('Generation error:', error);
