@@ -1,9 +1,9 @@
-import CarouselAI from './components/CarouselAI';
+import PremiumCarouselAI from './components/PremiumCarouselAI';
 
 export default function Home() {
   return (
     <main className="min-h-screen">
-      <CarouselAI />
+      <PremiumCarouselAI />
     </main>
   );
 }

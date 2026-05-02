@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Niche, Tone, NICHES, TONES } from '@/app/types';
+import { buildDynamicPrompt, trackGeneration, generateVariation } from '@/app/lib/content-engine';
 
 interface GenerateRequest {
   topic: string;
@@ -7,81 +8,30 @@ interface GenerateRequest {
   tone: Tone;
   username: string;
   numSlides?: number;
+  variationSeed?: number;
+  userId?: string;
 }
 
-function buildPrompt(topic: string, niche: Niche, tone: Tone, numSlides: number, username: string): string {
-  const toneConfig = TONES.find(t => t.id === tone);
-  const nicheConfig = NICHES.find(n => n.id === niche);
+// Simple in-memory cache (use Redis in production)
+const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-  const toneModifier = toneConfig?.promptModifier || '';
-  const nicheContext = nicheConfig ? `for ${nicheConfig.name} content` : '';
-
-  return `You are an expert Instagram content strategist who creates viral carousel posts.
-
-TOPIC: "${topic}"
-NICHE: ${nicheConfig?.name || niche}
-TONE: ${toneConfig?.name || tone}
-TARGET AUDIENCE: Instagram users interested in ${niche} content
-
-${toneModifier}
-
-STRUCTURE REQUIREMENTS:
-Generate EXACTLY ${numSlides} slides with this specific structure:
-
-SLIDE 1 - THE HOOK (Cover):
-- Bold, curiosity-driven title (MAX 8 words)
-- Pattern: "Nobody tells you this about X" or "The truth about X" or "X things I wish I knew about Y"
-- Must make people STOP scrolling and WANT to swipe
-- Include a compelling subtitle (1 sentence)
-
-SLIDES 2-${Math.min(numSlides - 1, 6)} - VALUE SLIDES:
-- Each slide = ONE clear idea
-- Use simple language (Grade 6 readability)
-- Break into bullet points with emojis
-- Include actionable tips or insights
-- NO fluff - every word must earn its place
-
-${numSlides > 7 ? `SLIDE ${numSlides - 1} - KEY TAKEAWAY:
-- Summarize the most important point
-- Make it memorable
-` : ''}
-
-SLIDE ${numSlides} - CALL TO ACTION:
-- Strong CTA to follow @${username}
-- Encourage saving the post
-- Ask a question to drive comments
-- Use phrases like "Which tip will you try first?" or "Save this for later"
-
-CONTENT RULES:
-- Every slide needs a clear, punchy title (3-6 words)
-- Body content should be 2-4 short sentences OR bullet points
-- Use relevant emojis throughout (but don't overdo it)
-- Write like a human mentor, not a textbook
-- Include line breaks for readability
-- Challenge common beliefs (especially for controversial tone)
-- Be specific, not generic (no "unlock your potential" fluff)
-
-EXAMPLE OUTPUT FORMAT:
-[
-  {
-    "title": "Nobody tells you this about AI",
-    "content": "99% of people use ChatGPT wrong.\\n\\nThey're treating it like Google when it's actually a thinking partner.\\n\\nHere's how the top 1% use it differently 👇",
-    "emoji": "🤖"
-  },
-  {
-    "title": "Treat it like a teammate",
-    "content": "• Ask it to debate your ideas\\n• Have it play devil's advocate\\n• Iterate on drafts together\\n\\nThe magic happens in the back-and-forth.",
-    "emoji": "💡"
-  }
-]
-
-Generate ${numSlides} slides for the topic "${topic}" ${nicheContext}. Return ONLY valid JSON array.`;
+function getCacheKey(topic: string, niche: Niche, tone: Tone, numSlides: number): string {
+  return `${topic}:${niche}:${tone}:${numSlides}`;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body: GenerateRequest = await req.json();
-    const { topic, niche, tone, username, numSlides = 7 } = body;
+    const {
+      topic,
+      niche,
+      tone,
+      username,
+      numSlides = 7,
+      variationSeed,
+      userId = 'anonymous'
+    } = body;
 
     // Validation
     if (!topic?.trim()) {
@@ -112,6 +62,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Check cache
+    const cacheKey = getCacheKey(topic, niche, tone, numSlides);
+    const cached = cache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      console.log('Returning cached result');
+      return NextResponse.json({
+        ...cached.data,
+        cached: true,
+      });
+    }
+
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
@@ -120,22 +81,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const systemPrompt = `You are an elite Instagram content strategist who specializes in creating viral carousel posts. Your content has generated millions of views.
-
-CORE PRINCIPLES:
-1. HOOK FIRST - The cover slide must be impossible to ignore
-2. VALUE DENSE - Every slide delivers actionable insight
-3. SCROLL STOPPING - Use pattern interrupts and curiosity gaps
-4. SIMPLE LANGUAGE - Grade 6 readability, no jargon
-5. VISUAL THINKING - Content that works as images
-
-You ALWAYS return valid JSON arrays. No markdown, no explanations, just JSON.`;
-
-    const userPrompt = buildPrompt(topic, niche, tone, numSlides, username.replace('@', ''));
+    // Build dynamic prompt with multi-layer system
+    const { prompt: userPrompt, systemPrompt, config } = await buildDynamicPrompt(
+      topic,
+      niche,
+      tone,
+      numSlides,
+      username.replace('@', ''),
+      userId
+    );
 
     // Create abort controller for timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     let response;
     try {
@@ -160,15 +118,18 @@ You ALWAYS return valid JSON arrays. No markdown, no explanations, just JSON.`;
       clearTimeout(timeoutId);
       if (fetchError.name === 'AbortError') {
         console.error('API request timed out after 30s');
-        // Return mock data for demo/testing
+        const mockData = generateDynamicMockSlides(topic, numSlides, username, config);
+        trackGeneration(userId, mockData);
         return NextResponse.json({
-          slides: generateMockSlides(topic, numSlides, username),
+          ...mockData,
           meta: {
             topic,
             niche,
             tone,
             slideCount: numSlides,
+            variation: config,
             mock: true,
+            timeout: true,
           }
         });
       }
@@ -179,10 +140,21 @@ You ALWAYS return valid JSON arrays. No markdown, no explanations, just JSON.`;
     if (!response.ok) {
       const errorText = await response.text();
       console.error('API Error:', response.status, errorText);
-      return NextResponse.json(
-        { error: `API Error: ${response.status}` },
-        { status: 500 }
-      );
+      // Return enhanced mock data on API error
+      const mockData = generateDynamicMockSlides(topic, numSlides, username, config);
+      trackGeneration(userId, mockData);
+      return NextResponse.json({
+        ...mockData,
+        meta: {
+          topic,
+          niche,
+          tone,
+          slideCount: numSlides,
+          variation: config,
+          mock: true,
+          apiError: response.status,
+        }
+      });
     }
 
     const result = await response.json();
@@ -192,12 +164,10 @@ You ALWAYS return valid JSON arrays. No markdown, no explanations, just JSON.`;
     let slides: Array<{ id: string; title: string; content: string; emoji: string }> = [];
 
     try {
-      // Try to extract JSON from the response
       const jsonMatch = text.match(/\[[\s\S]*?\]/);
       if (jsonMatch) {
         slides = JSON.parse(jsonMatch[0]);
       } else {
-        // Try parsing the whole response as JSON
         slides = JSON.parse(text);
       }
     } catch (e) {
@@ -205,10 +175,10 @@ You ALWAYS return valid JSON arrays. No markdown, no explanations, just JSON.`;
       slides = parseTextToSlides(text, numSlides, topic, username);
     }
 
-    // Validate and fix slides
+    // Validate and enhance slides
     slides = slides.map((slide, index) => ({
       id: `slide-${index + 1}`,
-      title: slide.title?.slice(0, 100) || `Slide ${index + 1}`,
+      title: slide.title?.slice(0, 100) || generateUniqueTitle(index, numSlides, config),
       content: slide.content?.slice(0, 500) || 'Content coming soon...',
       emoji: slide.emoji || getDefaultEmoji(index),
     }));
@@ -218,10 +188,8 @@ You ALWAYS return valid JSON arrays. No markdown, no explanations, just JSON.`;
       const i = slides.length;
       slides.push({
         id: `slide-${i + 1}`,
-        title: i === 0 ? 'The Secret' : i === numSlides - 1 ? 'Your Turn' : `Tip #${i}`,
-        content: i === numSlides - 1
-          ? `Follow @${username} for more tips!\n\nWhich tip will you try first? Comment below 👇`
-          : 'More insights coming...',
+        title: generateUniqueTitle(i, numSlides, config),
+        content: generateUniqueContent(i, numSlides, username, config),
         emoji: getDefaultEmoji(i),
       });
     }
@@ -230,15 +198,24 @@ You ALWAYS return valid JSON arrays. No markdown, no explanations, just JSON.`;
       slides = slides.slice(0, numSlides);
     }
 
-    return NextResponse.json({
+    const responseData = {
       slides,
       meta: {
         topic,
         niche,
         tone,
         slideCount: slides.length,
+        variation: config,
       }
-    });
+    };
+
+    // Cache the result
+    cache.set(cacheKey, { data: responseData, timestamp: Date.now() });
+
+    // Track generation for anti-repetition
+    trackGeneration(userId, responseData);
+
+    return NextResponse.json(responseData);
 
   } catch (error) {
     console.error('Generation error:', error);
@@ -250,8 +227,42 @@ You ALWAYS return valid JSON arrays. No markdown, no explanations, just JSON.`;
 }
 
 function getDefaultEmoji(index: number): string {
-  const emojis = ['🔥', '💡', '⚡', '🚀', '💎', '🎯', '✨', '💰', '📈', '🎉', '🤖', '🏆'];
+  const emojis = ['🔥', '💡', '⚡', '🚀', '💎', '🎯', '✨', '💰', '📈', '🎉', '🤖', '🏆', '🔮', '🌟', '🎨'];
   return emojis[index % emojis.length];
+}
+
+function generateUniqueTitle(index: number, total: number, config: any): string {
+  const hooks = [
+    'What nobody tells you',
+    'The uncomfortable truth',
+    'Stop believing this',
+    'The real secret',
+    'Why most people fail',
+    'The hidden pattern',
+    'Unpopular opinion',
+    'Evidence vs hype',
+  ];
+
+  if (index === 0) {
+    return hooks[Math.floor(Math.random() * hooks.length)];
+  }
+  if (index === total - 1) {
+    return 'Your move';
+  }
+  return `Insight #${index}`;
+}
+
+function generateUniqueContent(index: number, total: number, username: string, config: any): string {
+  if (index === total - 1) {
+    const ctas = [
+      `Follow @${username} for more unconventional insights.\n\nWhich point hit hardest? Comment 👇`,
+      `Save this before it gets buried.\n\nFollow @${username} for the full series.`,
+      `Tag someone who needs to see this 👇\n\nFollow @${username} for daily threads.`,
+    ];
+    return ctas[Math.floor(Math.random() * ctas.length)];
+  }
+
+  return 'Dive deeper into this concept. The nuances matter more than the basics.';
 }
 
 function parseTextToSlides(
@@ -268,14 +279,11 @@ function parseTextToSlides(
   for (const line of lines) {
     const trimmed = line.trim();
 
-    // Skip code blocks and JSON brackets
     if (trimmed.startsWith('```') || trimmed === '[' || trimmed === ']') continue;
 
-    // Check for new slide indicators
     const slideMatch = trimmed.match(/^(?:Slide\s*)?(\d+)[.:)]\s*(.+)/i);
 
     if (slideMatch) {
-      // Save previous slide if exists
       if (currentSlide.title) {
         slides.push({
           id: `slide-${slides.length + 1}`,
@@ -285,7 +293,6 @@ function parseTextToSlides(
         });
       }
 
-      // Start new slide
       currentSlide = {
         title: slideMatch[2].slice(0, 100),
         content: [],
@@ -307,7 +314,6 @@ function parseTextToSlides(
     if (slides.length >= count) break;
   }
 
-  // Don't forget the last slide
   if (currentSlide.title && slides.length < count) {
     slides.push({
       id: `slide-${slides.length + 1}`,
@@ -320,56 +326,55 @@ function parseTextToSlides(
   return slides;
 }
 
-// Generate mock slides when API is unavailable
-function generateMockSlides(topic: string, numSlides: number, username: string) {
-  const topicName = topic.length > 30 ? topic.slice(0, 30) + '...' : topic;
+function generateDynamicMockSlides(topic: string, numSlides: number, username: string, config: any) {
+  const variations: Record<string, Array<{ title: string; content: string; emoji: string }>> = {
+    curiosity: [
+      { title: 'What 90% get wrong about this', content: 'The mainstream narrative is backwards.\n\nWhat if everything you believed was actually holding you back?\n\nHere is what the data actually shows 👇', emoji: '🤯' },
+      { title: 'The pattern nobody discusses', content: 'I analyzed 1000+ cases.\n\nA hidden pattern emerged that contradicts popular advice.\n\nThis changes everything.', emoji: '🔍' },
+    ],
+    fear: [
+      { title: 'Warning: Stop doing this today', content: 'This common habit is costing you more than you realize.\n\nEvery day you wait compounds the problem.\n\nHere is what to do instead 👇', emoji: '⚠️' },
+      { title: 'The silent killer of progress', content: 'It creeps up slowly.\n\nBy the time you notice, the damage is done.\n\nProtect yourself now.', emoji: '🚨' },
+    ],
+    contrarian: [
+      { title: 'Unpopular opinion: The hype is wrong', content: 'Everyone is chasing the wrong metric.\n\nThe real winners focus on something completely different.\n\nHere is the uncomfortable truth 👇', emoji: '🎯' },
+      { title: 'Evidence > opinions', content: 'Trends come and go.\n\nData reveals what actually works.\n\nFollow the evidence, not the crowd.', emoji: '📊' },
+    ],
+  };
+
+  const hookStyle = config.hookStyle || 'curiosity';
+  const hookVariations = variations[hookStyle] || variations.curiosity;
+  const hook = hookVariations[Math.floor(Math.random() * hookVariations.length)];
 
   const slides: Array<{ id: string; title: string; content: string; emoji: string }> = [
     {
       id: 'slide-1',
-      title: `Nobody talks about ${topicName}`,
-      content: `99% of people get this wrong.\n\nI spent years figuring out what actually works.\n\nHere is the truth nobody tells you 👇`,
-      emoji: '🔥',
-    },
-    {
-      id: 'slide-2',
-      title: 'Stop doing what everyone does',
-      content: `The mainstream advice is outdated.\n\n• It wastes your time\n• It gives average results\n• It ignores the real problem\n\nThere is a better way.`,
-      emoji: '⚠️',
-    },
-    {
-      id: 'slide-3',
-      title: 'The insider secret',
-      content: `Top performers use a different approach:\n\n• Focus on high-leverage actions\n• Ignore the noise\n• Double down on what works\n\nSimple but not easy.`,
-      emoji: '💎',
-    },
-    {
-      id: 'slide-4',
-      title: 'Your action plan',
-      content: `Here is exactly what to do:\n\n1. Audit your current approach\n2. Cut what is not working\n3. Apply this framework\n4. Measure the results\n\nStart today.`,
-      emoji: '🎯',
-    },
-    {
-      id: 'slide-5',
-      title: 'Your turn',
-      content: `Follow @${username} for more insights.\n\nWhich tip will you try first?\n\nComment below 👇`,
-      emoji: '👇',
+      ...hook,
     },
   ];
 
-  // Adjust to requested number of slides
-  if (numSlides < 5) {
-    return slides.slice(0, numSlides - 1).concat(slides.slice(-1));
-  } else if (numSlides > 5) {
-    while (slides.length < numSlides) {
-      slides.splice(slides.length - 1, 0, {
-        id: `slide-${slides.length}`,
-        title: `Pro tip #${slides.length - 2}`,
-        content: `Implement this strategy consistently.\n\nSmall daily improvements compound into massive results over time.`,
-        emoji: getDefaultEmoji(slides.length - 1),
-      });
-    }
+  // Generate varied middle slides
+  for (let i = 1; i < numSlides - 1; i++) {
+    const templates = [
+      { title: `Myth #${i}`, content: `Common belief: "You need more time/resources/skill"\n\nReality: You need better systems.\n\n• Prioritize ruthlessly\n• Eliminate before optimizing\n• Focus on high-leverage actions`, emoji: '💡' },
+      { title: 'The 80/20 rule', content: '80% of results come from 20% of efforts.\n\nIdentify your high-impact activities:\n\n• Audit your current approach\n• Double down on what works\n• Eliminate the rest', emoji: '🎯' },
+      { title: 'Pattern interrupt', content: 'Break the cycle with one small change.\n\n• Start with 5 minutes daily\n• Track one metric only\n• Build momentum through consistency\n\nSmall wins compound.', emoji: '⚡' },
+    ];
+    slides.push({
+      id: `slide-${i + 1}`,
+      ...templates[i % templates.length],
+    });
   }
 
-  return slides;
+  // CTA slide
+  const ctas = [
+    { title: 'Your move', content: `Follow @${username} for evidence-based insights.\n\nWhich myth did you believe? Comment below 👇`, emoji: '👇' },
+    { title: 'Save this', content: `This thread took hours to research.\n\nFollow @${username} before it gets buried.\n\nShare with someone who needs this 🙏`, emoji: '💾' },
+  ];
+  slides.push({
+    id: `slide-${numSlides}`,
+    ...ctas[Math.floor(Math.random() * ctas.length)],
+  });
+
+  return { slides };
 }
