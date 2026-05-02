@@ -421,36 +421,36 @@ function generateDynamicMockSlides(topic: string, numSlides: number, username: s
     },
   ];
 
-  // TOPIC-SPECIFIC value slides
+  // TOPIC-SPECIFIC value slides - Titles must MATCH content
   const valueSlides = [
     {
-      title: 'Myth #1: It takes years to learn',
-      content: `Reality: ${topicName} mastery comes from smart practice, not time.\n\n• Focus on high-impact skills first\n• Use the 80/20 principle\n• Practice with real projects\n\nQuality > Quantity`,
-      emoji: '💡'
-    },
-    {
-      title: 'The tool stack that actually works',
-      content: `Stop chasing every new tool for ${topicName}.\n\n• Pick 2-3 core tools\n• Master them completely\n• Ignore the shiny distractions\n\nDepth beats breadth every time.`,
-      emoji: '🛠️'
-    },
-    {
-      title: 'The 5-minute daily habit',
-      content: `Consistency beats intensity for ${topicName}.\n\n• 5 minutes every day beats 2 hours once a week\n• Compound growth is real\n• Small wins build momentum\n\nStart today.`,
-      emoji: '⚡'
-    },
-    {
-      title: 'What the top 1% do differently',
-      content: `They do not work harder on ${topicName}.\n\n• They systematize their approach\n• They learn from feedback loops\n• They iterate rapidly\n\nWork smart, not just hard.`,
+      title: `The 80/20 rule for ${topicName}`,
+      content: `20% of effort drives 80% of results in ${topicName}.\n\n• Find the high-leverage skills\n• Cut the busywork\n• Focus on what moves the needle\n\nSmart work beats hard work.`,
       emoji: '🎯'
     },
     {
-      title: 'Common beginner mistake',
-      content: `Trying to learn ${topicName} all at once.\n\n• Start with one concept\n• Master it completely\n• Then move to the next\n\nSequential > Parallel learning`,
+      title: `Tool overload is killing your ${topicName} progress`,
+      content: `You do not need 20 tools for ${topicName}.\n\n• Pick 2-3 that fit your workflow\n• Master them deeply\n• Ignore the hype\n\nDepth beats breadth.`,
+      emoji: '🛠️'
+    },
+    {
+      title: `The daily ${topicName} habit that works`,
+      content: `Consistency beats intensity for ${topicName}.\n\n• 15 minutes daily > 3 hours on Sunday\n• Compound growth is real\n• Miss a day, never miss two\n\nSmall wins stack.`,
+      emoji: '⚡'
+    },
+    {
+      title: `Copy how the ${topicName} experts work`,
+      content: `Top performers do not grind harder at ${topicName}.\n\n• They build systems\n• They automate repetitive tasks\n• They learn from feedback fast\n\nWork smart first.`,
+      emoji: '🚀'
+    },
+    {
+      title: `Stop trying to learn ${topicName} all at once`,
+      content: `The biggest mistake beginners make:\n\n• Trying to master everything\n• Getting overwhelmed\n• Giving up\n\nPick ONE skill. Master it. Move on.`,
       emoji: '🚨'
     },
     {
-      title: 'The framework that works',
-      content: `My 3-step process for ${topicName}:\n\n1. Learn the fundamentals deeply\n2. Build real projects immediately\n3. Teach others to solidify\n\nRinse and repeat.`,
+      title: `My 3-step ${topicName} framework`,
+      content: `What actually worked for me:\n\n1. Learn one concept deeply\n2. Apply it to a real project\n3. Teach someone else\n\nRepeat until expert.`,
       emoji: '🔄'
     },
   ];
