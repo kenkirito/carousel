@@ -81,51 +81,35 @@ function buildClaudePrompt(topic: string, niche: Niche, tone: Tone, numSlides: n
   const tonePattern = TONE_PATTERNS[tone];
   const numValueSlides = numSlides - 2;
 
-  const system = `You are an expert Instagram carousel creator who writes scroll-stopping, viral-worthy content.
+  const system = `You are an expert Instagram carousel creator. Write scroll-stopping content.
 
-STRICT FORMAT RULES (NEVER BREAK THESE):
-- Headline: MAXIMUM 8 words, ideally 5-7 words
-- Subtext: MAXIMUM 12 words, ideally 8-10 words
-- One idea per slide - clear and punchy
-- No fluff words like "unlock", "game-changer", "skyrocket", "secret sauce"
-- No paragraphs - only short, punchy sentences
-- Every word must earn its place
+STRICT RULES:
+- Headline: MAX 8 words
+- Subtext: MAX 12 words
+- One idea per slide
+- No fluff words like "unlock", "game-changer", "skyrocket"
+- Short, punchy sentences only
 
 AUDIENCE: ${context.audience}
-TONE: ${tonePattern.style}`;
+TONE: ${tonePattern.style}`
 
-  const user = `Create a ${numSlides}-slide Instagram carousel about "${topic}" for ${niche} audience.
+  const user = `Create a ${numSlides}-slide carousel about "${topic}".
 
 STRUCTURE:
-Slide 1 (HOOK): ${tonePattern.hookExamples.join(' OR ')}
-Slides 2-${numSlides - 1} (VALUE): Specific, actionable insights about ${topic}
-Slide ${numSlides} (CTA): Call-to-action to follow @${username}
+- Slide 1 (HOOK): ${tonePattern.hookExamples[0].replace('[topic]', topic)}
+- Slides 2-${numSlides - 1} (VALUE): Specific insights about ${topic}
+- Slide ${numSlides} (CTA): Follow @${username}
 
-NICHE CONTEXT:
-- Keywords: ${context.keywords.slice(0, 6).join(', ')}
-- Pain points: ${context.painPoints.slice(0, 4).join(', ')}
-- Power words: ${context.powerWords.slice(0, 5).join(', ')}
+CONTEXT:
+- Pain points: ${context.painPoints.slice(0, 3).join(', ')}
+- Power words: ${context.powerWords.slice(0, 4).join(', ')}
 
-CONTENT STYLE: ${tonePattern.contentStyle}
+STYLE: ${tonePattern.contentStyle}
 
-EXAMPLE OF PERFECT OUTPUT:
-Slide 1: "The AI secret nobody talks about" / "This changes everything 👇" / emoji: 🔥
-Slide 2: "ChatGPT is just the beginning" / "Real power is in custom GPTs" / emoji: 🤖
-Slide 3: "Stop learning, start building" / "Execution beats theory every time" / emoji: ⚡
+OUTPUT JSON ONLY:
+[{"headline":"...","subtext":"...","emoji":"🔥"},{"headline":"...","subtext":"...","emoji":"💡"}]
 
-REQUIRED OUTPUT FORMAT - RETURN ONLY THIS JSON:
-[
-  {"headline": "...", "subtext": "...", "emoji": "🔥"},
-  {"headline": "...", "subtext": "...", "emoji": "💡"},
-  ...
-]
-
-RULES:
-1. Headlines max 8 words
-2. Subtext max 12 words
-3. Each slide ONE clear idea
-4. Topic-specific, not generic
-5. No bullet points in subtext`;
+RULES: Headlines ≤8 words, Subtext ≤12 words, Topic-specific, No fluff`;
 
   return { system, user };
 }
@@ -290,7 +274,7 @@ export async function POST(req: NextRequest) {
 
     // Call Claude API
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const timeoutId = setTimeout(() => controller.abort(), 55000);
 
     let response;
     try {
