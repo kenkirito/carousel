@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Loader2,
@@ -19,9 +19,9 @@ import {
   Hash,
   User,
   Type,
-  CheckCircle2,
-  RefreshCw,
-  Palette,
+  FileText,
+  Bot,
+  ArrowRight,
   Zap,
   AlertCircle,
 } from 'lucide-react';
@@ -45,7 +45,6 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { NICHES, TONES, NICHE_TEMPLATES, Slide, Niche, Tone } from '@/app/types';
 import { CarouselTemplate } from '@/app/types';
-import { sessionMemory } from '@/app/lib/content-engine';
 
 // ============================================================================
 // GLASSMORPHISM COMPONENTS
@@ -110,6 +109,39 @@ const FloatingLabel = ({ children }: { children: React.ReactNode }) => (
   </motion.div>
 );
 
+const ModeToggle = ({
+  mode,
+  onChange,
+}: {
+  mode: 'ai' | 'content';
+  onChange: (mode: 'ai' | 'content') => void;
+}) => (
+  <div className="flex items-center justify-center gap-2 p-1.5 rounded-xl bg-white/5 border border-white/10">
+    <button
+      onClick={() => onChange('ai')}
+      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+        mode === 'ai'
+          ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white shadow-lg'
+          : 'text-white/60 hover:text-white hover:bg-white/5'
+      }`}
+    >
+      <Bot className="w-4 h-4" />
+      AI Generate
+    </button>
+    <button
+      onClick={() => onChange('content')}
+      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+        mode === 'content'
+          ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white shadow-lg'
+          : 'text-white/60 hover:text-white hover:bg-white/5'
+      }`}
+    >
+      <FileText className="w-4 h-4" />
+      Convert Content
+    </button>
+  </div>
+);
+
 // ============================================================================
 // PREMIUM SLIDE PREVIEW
 // ============================================================================
@@ -132,6 +164,32 @@ const PremiumSlidePreview = ({
   username: string;
 }) => {
   const { style } = template;
+
+  // Determine slide type styling
+  const getSlideTypeStyle = (tag: string) => {
+    switch (tag?.toLowerCase()) {
+      case 'hook':
+        return { badge: 'HOOK', color: '#ff6b6b', icon: '🔥' };
+      case 'point':
+        return { badge: 'INSIGHT', color: '#4ecdc4', icon: '💡' };
+      case 'list':
+        return { badge: 'LIST', color: '#95e1d3', icon: '📋' };
+      case 'quote':
+        return { badge: 'QUOTE', color: '#f38181', icon: '💬' };
+      case 'stat':
+        return { badge: 'DATA', color: '#aa96da', icon: '📊' };
+      case 'myth':
+        return { badge: 'MYTH', color: '#fcbad3', icon: '⚠️' };
+      case 'tip':
+        return { badge: 'TIP', color: '#a8d8ea', icon: '✨' };
+      case 'cta':
+        return { badge: 'CTA', color: '#ffd93d', icon: '👇' };
+      default:
+        return { badge: tag?.toUpperCase() || 'VALUE', color: style.accentColor, icon: slide.emoji };
+    }
+  };
+
+  const slideStyle = getSlideTypeStyle(slide.tag || '');
 
   return (
     <div
@@ -196,12 +254,12 @@ const PremiumSlidePreview = ({
           animate={{ opacity: 1, scale: 1 }}
           className="inline-flex items-center gap-2 px-3 py-1 rounded-full w-fit"
           style={{
-            background: `${style.accentColor}20`,
-            border: `1px solid ${style.accentColor}40`,
+            background: `${slideStyle.color}20`,
+            border: `1px solid ${slideStyle.color}40`,
           }}
         >
-          <span style={{ color: style.accentColor }} className="text-xs font-bold uppercase tracking-wider">
-            {isFirst ? 'Hook' : isLast ? 'CTA' : 'Value'}
+          <span style={{ color: slideStyle.color }} className="text-xs font-bold uppercase tracking-wider">
+            {slideStyle.badge}
           </span>
         </motion.div>
 
@@ -338,6 +396,21 @@ const SortableSlideEditor = ({
     transition,
   };
 
+  // Get badge color based on slide type
+  const getBadgeStyle = (tag: string) => {
+    const styles: Record<string, string> = {
+      hook: 'bg-red-500/20 text-red-400',
+      point: 'bg-teal-500/20 text-teal-400',
+      list: 'bg-emerald-500/20 text-emerald-400',
+      quote: 'bg-pink-500/20 text-pink-400',
+      stat: 'bg-purple-500/20 text-purple-400',
+      myth: 'bg-orange-500/20 text-orange-400',
+      tip: 'bg-sky-500/20 text-sky-400',
+      cta: 'bg-yellow-500/20 text-yellow-400',
+    };
+    return styles[tag?.toLowerCase()] || (isFirst ? 'bg-pink-500/20 text-pink-400' : isLast ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400');
+  };
+
   return (
     <motion.div
       ref={setNodeRef}
@@ -361,15 +434,9 @@ const SortableSlideEditor = ({
               </button>
               <span className="text-sm font-medium text-white/60">Slide {index + 1}</span>
               <span
-                className={`text-xs px-2 py-0.5 rounded-full ${
-                  isFirst
-                    ? 'bg-pink-500/20 text-pink-400'
-                    : isLast
-                    ? 'bg-purple-500/20 text-purple-400'
-                    : 'bg-blue-500/20 text-blue-400'
-                }`}
+                className={`text-xs px-2 py-0.5 rounded-full ${getBadgeStyle(slide.tag || '')}`}
               >
-                {isFirst ? 'Hook' : isLast ? 'CTA' : 'Value'}
+                {slide.tag?.toUpperCase() || (isFirst ? 'HOOK' : isLast ? 'CTA' : 'VALUE')}
               </span>
             </div>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -412,13 +479,30 @@ const SortableSlideEditor = ({
                 className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500/50 resize-none"
                 placeholder="Slide content..."
               />
-              <input
-                type="text"
-                value={editedSlide.emoji}
-                onChange={(e) => setEditedSlide({ ...editedSlide, emoji: e.target.value })}
-                className="w-16 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-center text-lg"
-                placeholder="😊"
-              />
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={editedSlide.emoji}
+                  onChange={(e) => setEditedSlide({ ...editedSlide, emoji: e.target.value })}
+                  className="w-16 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-center text-lg"
+                  placeholder="😊"
+                />
+                <select
+                  value={editedSlide.tag || 'VALUE'}
+                  onChange={(e) => setEditedSlide({ ...editedSlide, tag: e.target.value })}
+                  className="flex-1 bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500/50"
+                >
+                  <option value="HOOK">Hook</option>
+                  <option value="POINT">Point</option>
+                  <option value="LIST">List</option>
+                  <option value="QUOTE">Quote</option>
+                  <option value="STAT">Stat</option>
+                  <option value="MYTH">Myth</option>
+                  <option value="TIP">Tip</option>
+                  <option value="CTA">CTA</option>
+                  <option value="VALUE">Value</option>
+                </select>
+              </div>
             </div>
           ) : (
             <div className="space-y-2 cursor-pointer" onClick={onEdit}>
@@ -440,12 +524,20 @@ const SortableSlideEditor = ({
 // ============================================================================
 
 export default function PremiumCarouselAI() {
-  // Form State
+  // Mode state
+  const [mode, setMode] = useState<'ai' | 'content'>('ai');
+
+  // Form State - AI Mode
   const [topic, setTopic] = useState('');
+
+  // Form State - Content Mode
+  const [userContent, setUserContent] = useState('');
+
+  // Common Form State
   const [username, setUsername] = useState('');
   const [selectedNiche, setSelectedNiche] = useState<Niche>('tech');
   const [selectedTone, setSelectedTone] = useState<Tone>('viral');
-  const [numSlides, setNumSlides] = useState(7);
+  const [numSlides, setNumSlides] = useState(5);
 
   // App State
   const [slides, setSlides] = useState<Slide[] | null>(null);
@@ -453,7 +545,6 @@ export default function PremiumCarouselAI() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [downloading, setDownloading] = useState(false);
   const [exportCount, setExportCount] = useState(0);
-  const [generationMeta, setGenerationMeta] = useState<any>(null);
 
   // Editing State
   const [editingSlideId, setEditingSlideId] = useState<string | null>(null);
@@ -465,6 +556,8 @@ export default function PremiumCarouselAI() {
 
   // Refs
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [previewScale, setPreviewScale] = useState(0.5);
 
   // Sensors for drag and drop
   const sensors = useSensors(
@@ -472,10 +565,7 @@ export default function PremiumCarouselAI() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // ResizeObserver for scaling preview safely
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [previewScale, setPreviewScale] = useState(0.5);
-
+  // ResizeObserver for scaling preview
   useEffect(() => {
     if (!containerRef.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -489,20 +579,12 @@ export default function PremiumCarouselAI() {
     return () => observer.disconnect();
   }, []);
 
-  // Load session memory
-  useEffect(() => {
-    const userId = 'user_' + (username || 'anonymous');
-    const lastGen = sessionMemory.getLastGeneration(userId);
-    if (lastGen) {
-      setExportCount(lastGen.exportCount || 0);
-    }
-  }, [username]);
-
   // Update template when niche changes
   useEffect(() => {
     setSelectedTemplate(availableTemplates[0]);
   }, [selectedNiche, availableTemplates]);
 
+  // AI Generation
   const generateCarousel = async () => {
     if (!topic.trim() || !username.trim()) return;
 
@@ -517,7 +599,6 @@ export default function PremiumCarouselAI() {
           tone: selectedTone,
           username: username.replace('@', ''),
           numSlides,
-          userId: 'user_' + username,
         }),
       });
 
@@ -529,17 +610,43 @@ export default function PremiumCarouselAI() {
       }
 
       setSlides(data.slides);
-      setGenerationMeta(data.meta);
       setCurrentSlide(0);
       slideRefs.current = new Array(data.slides.length).fill(null);
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      // Save to session memory
-      sessionMemory.setLastGeneration('user_' + username, {
-        topic,
-        niche: selectedNiche,
-        tone: selectedTone,
-        slideCount: numSlides,
+  // Content Conversion
+  const convertContent = async () => {
+    if (!userContent.trim() || !username.trim()) return;
+
+    setLoading(true);
+    try {
+      const res = await fetch('/api/convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: userContent.trim(),
+          niche: selectedNiche,
+          tone: selectedTone,
+          username: username.replace('@', ''),
+        }),
       });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data.error || 'Failed to convert content');
+        return;
+      }
+
+      setSlides(data.slides);
+      setCurrentSlide(0);
+      slideRefs.current = new Array(data.slides.length).fill(null);
     } catch (error) {
       console.error('Error:', error);
       alert('Network error. Please try again.');
@@ -588,6 +695,7 @@ export default function PremiumCarouselAI() {
       title: 'New Slide',
       content: 'Add your content here...',
       emoji: '💡',
+      tag: 'VALUE',
     };
     setSlides([...slides, newSlide]);
     slideRefs.current.push(null);
@@ -602,12 +710,10 @@ export default function PremiumCarouselAI() {
 
     setDownloading(true);
     try {
-      // Save current slide
       const originalSlide = currentSlide;
 
       for (let i = 0; i < slides.length; i++) {
         setCurrentSlide(i);
-        // Wait for render
         await new Promise((resolve) => setTimeout(resolve, 300));
 
         const element = slideRefs.current[i];
@@ -628,24 +734,15 @@ export default function PremiumCarouselAI() {
         link.click();
         document.body.removeChild(link);
       }
-      
-      setCurrentSlide(originalSlide);
 
-      const newCount = exportCount + 1;
-      setExportCount(newCount);
-      sessionMemory.setLastGeneration('user_' + username, {
-        exportCount: newCount,
-      });
+      setCurrentSlide(originalSlide);
+      setExportCount(exportCount + 1);
     } catch (error) {
       console.error('Download error:', error);
       alert('Download failed. Please try again.');
     } finally {
       setDownloading(false);
     }
-  };
-
-  const regenerateWithVariation = () => {
-    generateCarousel();
   };
 
   return (
@@ -699,22 +796,48 @@ export default function PremiumCarouselAI() {
               <p className="text-white/50 text-lg">AI-powered content that stops the scroll</p>
             </motion.div>
 
+            {/* Mode Toggle */}
+            <div className="mb-8">
+              <ModeToggle mode={mode} onChange={setMode} />
+            </div>
+
             <GlassCard className="p-8" hover>
               <div className="space-y-6">
-                {/* Topic */}
-                <div>
-                  <FloatingLabel>
-                    <Type className="w-4 h-4" />
-                    Topic / Idea <span className="text-pink-400">*</span>
-                  </FloatingLabel>
-                  <input
-                    type="text"
-                    value={topic}
-                    onChange={(e) => setTopic(e.target.value)}
-                    placeholder="e.g., ChatGPT for students, Morning routine tips..."
-                    className="w-full bg-black/30 border border-white/10 rounded-xl py-4 px-5 text-white placeholder-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 transition-all"
-                  />
-                </div>
+                {/* Mode-specific inputs */}
+                {mode === 'ai' ? (
+                  // AI Mode - Topic Input
+                  <div>
+                    <FloatingLabel>
+                      <Type className="w-4 h-4" />
+                      Topic / Idea <span className="text-pink-400">*</span>
+                    </FloatingLabel>
+                    <input
+                      type="text"
+                      value={topic}
+                      onChange={(e) => setTopic(e.target.value)}
+                      placeholder="e.g., ChatGPT for students, Morning routine tips..."
+                      className="w-full bg-black/30 border border-white/10 rounded-xl py-4 px-5 text-white placeholder-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 transition-all"
+                    />
+                  </div>
+                ) : (
+                  // Content Mode - Text Area
+                  <div>
+                    <FloatingLabel>
+                      <FileText className="w-4 h-4" />
+                      Your Content <span className="text-pink-400">*</span>
+                    </FloatingLabel>
+                    <textarea
+                      value={userContent}
+                      onChange={(e) => setUserContent(e.target.value)}
+                      placeholder="Paste your blog post, article, notes, or ideas here... Claude will convert it into structured carousel slides.&#10;&#10;Example:&#10;I learned that most developers waste hours on AI prompts that don't ship anything. The real power is in context engineering - feeding your actual codebase to AI instead of random prompts. Start building today, perfect later."
+                      rows={8}
+                      className="w-full bg-black/30 border border-white/10 rounded-xl py-4 px-5 text-white placeholder-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 transition-all resize-none"
+                    />
+                    <p className="text-xs text-white/40 mt-2">
+                      Claude will extract key points and structure them into engaging slides
+                    </p>
+                  </div>
+                )}
 
                 {/* Username */}
                 <div>
@@ -790,41 +913,43 @@ export default function PremiumCarouselAI() {
                   </div>
                 </div>
 
-                {/* Slides Count */}
-                <div>
-                  <FloatingLabel>
-                    <Hash className="w-4 h-4" />
-                    Number of Slides: <span className="text-pink-400 font-semibold">{numSlides}</span>
-                  </FloatingLabel>
-                  <input
-                    type="range"
-                    min={3}
-                    max={10}
-                    value={numSlides}
-                    onChange={(e) => setNumSlides(parseInt(e.target.value))}
-                    className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-pink-500"
-                  />
-                  <div className="flex justify-between text-xs text-white/30 mt-2">
-                    <span>3</span>
-                    <span>10</span>
+                {/* Slides Count - Only for AI mode */}
+                {mode === 'ai' && (
+                  <div>
+                    <FloatingLabel>
+                      <Hash className="w-4 h-4" />
+                      Number of Slides: <span className="text-pink-400 font-semibold">{numSlides}</span>
+                    </FloatingLabel>
+                    <input
+                      type="range"
+                      min={3}
+                      max={10}
+                      value={numSlides}
+                      onChange={(e) => setNumSlides(parseInt(e.target.value))}
+                      className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-pink-500"
+                    />
+                    <div className="flex justify-between text-xs text-white/30 mt-2">
+                      <span>3</span>
+                      <span>10</span>
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* Generate Button */}
+                {/* Generate/Convert Button */}
                 <GradientButton
-                  onClick={generateCarousel}
-                  disabled={loading || !topic.trim() || !username.trim()}
+                  onClick={mode === 'ai' ? generateCarousel : convertContent}
+                  disabled={loading || !(mode === 'ai' ? topic.trim() : userContent.trim()) || !username.trim()}
                   className="w-full py-4 text-lg"
                 >
                   {loading ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      Creating magic...
+                      {mode === 'ai' ? 'Creating magic...' : 'Converting content...'}
                     </>
                   ) : (
                     <>
-                      <Wand2 className="w-5 h-5" />
-                      Generate Carousel
+                      {mode === 'ai' ? <Wand2 className="w-5 h-5" /> : <ArrowRight className="w-5 h-5" />}
+                      {mode === 'ai' ? 'Generate Carousel' : 'Convert to Carousel'}
                     </>
                   )}
                 </GradientButton>
@@ -851,13 +976,21 @@ export default function PremiumCarouselAI() {
 
                 <div className="flex items-center gap-2">
                   <GradientButton
-                    onClick={regenerateWithVariation}
+                    onClick={() => {
+                      setSlides(null);
+                      setCurrentSlide(0);
+                      if (mode === 'ai') {
+                        generateCarousel();
+                      } else {
+                        convertContent();
+                      }
+                    }}
                     disabled={loading}
                     variant="secondary"
                     className="px-4 py-2 text-sm"
                   >
-                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                    Variation
+                    <Loader2 className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                    Regenerate
                   </GradientButton>
 
                   <GradientButton
@@ -875,27 +1008,9 @@ export default function PremiumCarouselAI() {
                 </div>
               </div>
 
-              {/* Template Selector */}
-              <div className="flex items-center gap-3 overflow-x-auto pb-2">
-                <Palette className="w-4 h-4 text-white/40 flex-shrink-0" />
-                {availableTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    onClick={() => setSelectedTemplate(template)}
-                    className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border whitespace-nowrap ${
-                      selectedTemplate.id === template.id
-                        ? 'border-pink-500 text-white bg-pink-500/20'
-                        : 'border-white/10 text-white/60 hover:border-white/30'
-                    }`}
-                  >
-                    {template.name}
-                  </button>
-                ))}
-              </div>
-
               {/* Main Preview */}
               <GlassCard className="flex-1 p-4 md:p-6 flex items-center justify-center">
-                <div 
+                <div
                   ref={containerRef}
                   className="relative aspect-square rounded-2xl overflow-hidden shadow-2xl bg-black/20 w-full max-w-[500px]"
                 >
@@ -934,7 +1049,7 @@ export default function PremiumCarouselAI() {
                   <ChevronLeft className="w-5 h-5" />
                 </button>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap justify-center">
                   {slides.map((slide, index) => (
                     <button
                       key={slide.id}
@@ -1017,8 +1132,8 @@ export default function PremiumCarouselAI() {
                   <div>
                     <p className="text-blue-400 text-sm font-medium mb-1">Pro Tip</p>
                     <p className="text-white/60 text-sm">
-                      Drag to reorder. The hook (first slide) is critical for stopping the scroll.
-                      Test different variations for maximum engagement.
+                      Drag to reorder. Use different slide types (Hook, Point, List, Quote, Myth, Tip, CTA)
+                      to create variety and engagement.
                     </p>
                   </div>
                 </div>
