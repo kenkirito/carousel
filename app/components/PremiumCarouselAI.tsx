@@ -472,6 +472,23 @@ export default function PremiumCarouselAI() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  // ResizeObserver for scaling preview safely
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [previewScale, setPreviewScale] = useState(0.5);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        if (entry.contentRect.width > 0) {
+          setPreviewScale(entry.contentRect.width / 1000);
+        }
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   // Load session memory
   useEffect(() => {
     const userId = 'user_' + (username || 'anonymous');
@@ -585,7 +602,14 @@ export default function PremiumCarouselAI() {
 
     setDownloading(true);
     try {
+      // Save current slide
+      const originalSlide = currentSlide;
+
       for (let i = 0; i < slides.length; i++) {
+        setCurrentSlide(i);
+        // Wait for render
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
         const element = slideRefs.current[i];
         if (!element) continue;
 
@@ -603,9 +627,9 @@ export default function PremiumCarouselAI() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-
-        await new Promise((resolve) => setTimeout(resolve, 200));
       }
+      
+      setCurrentSlide(originalSlide);
 
       const newCount = exportCount + 1;
       setExportCount(newCount);
@@ -809,9 +833,9 @@ export default function PremiumCarouselAI() {
           </div>
         ) : (
           // Editor Panel
-          <div className="grid lg:grid-cols-2 gap-8 h-[calc(100vh-140px)]">
+          <div className="grid lg:grid-cols-2 gap-8 items-start pb-20">
             {/* Left: Preview */}
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 lg:sticky lg:top-24">
               {/* Controls */}
               <div className="flex items-center justify-between">
                 <button
@@ -870,34 +894,32 @@ export default function PremiumCarouselAI() {
               </div>
 
               {/* Main Preview */}
-              <GlassCard className="flex-1 p-6 flex items-center justify-center">
-                <div className="relative" style={{ width: '100%', maxWidth: '500px', aspectRatio: '1/1' }}>
-                  <div
-                    className="absolute inset-0 rounded-2xl overflow-hidden shadow-2xl"
-                    style={{ transform: 'scale(0.5)', transformOrigin: 'top left' }}
-                  >
-                    <div style={{ width: '1000px', height: '1000px' }}>
-                      {slides.map((slide, index) => (
-                        <div
-                          key={slide.id}
-                          ref={(el) => {
-                            slideRefs.current[index] = el;
-                          }}
-                          className={index === currentSlide ? 'block' : 'hidden'}
-                          style={{ width: '100%', height: '100%' }}
-                        >
-                          <PremiumSlidePreview
-                            slide={slide}
-                            index={index}
-                            total={slides.length}
-                            template={selectedTemplate}
-                            isFirst={index === 0}
-                            isLast={index === slides.length - 1}
-                            username={username}
-                          />
-                        </div>
-                      ))}
-                    </div>
+              <GlassCard className="flex-1 p-4 md:p-6 flex items-center justify-center">
+                <div 
+                  ref={containerRef}
+                  className="relative aspect-square rounded-2xl overflow-hidden shadow-2xl bg-black/20 w-full max-w-[500px]"
+                >
+                  <div className="absolute top-0 left-0 origin-top-left" style={{ width: '1000px', height: '1000px', transform: `scale(${previewScale})` }}>
+                    {slides.map((slide, index) => (
+                      <div
+                        key={slide.id}
+                        ref={(el) => {
+                          slideRefs.current[index] = el;
+                        }}
+                        className={index === currentSlide ? 'block' : 'hidden'}
+                        style={{ width: '100%', height: '100%' }}
+                      >
+                        <PremiumSlidePreview
+                          slide={slide}
+                          index={index}
+                          total={slides.length}
+                          template={selectedTemplate}
+                          isFirst={index === 0}
+                          isLast={index === slides.length - 1}
+                          username={username}
+                        />
+                      </div>
+                    ))}
                   </div>
                 </div>
               </GlassCard>
@@ -956,14 +978,14 @@ export default function PremiumCarouselAI() {
                 </GradientButton>
               </div>
 
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1">
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
                   onDragEnd={handleDragEnd}
                 >
                   <SortableContext items={slides.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-                    <div className="space-y-2 h-full overflow-y-auto pr-2">
+                    <div className="space-y-2">
                       <AnimatePresence>
                         {slides.map((slide, index) => (
                           <SortableSlideEditor
