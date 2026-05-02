@@ -327,23 +327,91 @@ function parseTextToSlides(
 }
 
 function generateDynamicMockSlides(topic: string, numSlides: number, username: string, config: any) {
-  const variations: Record<string, Array<{ title: string; content: string; emoji: string }>> = {
+  const topicName = topic.length > 40 ? topic.slice(0, 40) : topic;
+  const hookStyle = config.hookStyle || 'curiosity';
+
+  // TOPIC-SPECIFIC content generators
+  const hooks: Record<string, Array<{ title: string; content: string; emoji: string }>> = {
     curiosity: [
-      { title: 'What 90% get wrong about this', content: 'The mainstream narrative is backwards.\n\nWhat if everything you believed was actually holding you back?\n\nHere is what the data actually shows 👇', emoji: '🤯' },
-      { title: 'The pattern nobody discusses', content: 'I analyzed 1000+ cases.\n\nA hidden pattern emerged that contradicts popular advice.\n\nThis changes everything.', emoji: '🔍' },
+      {
+        title: `I spent 100 hours testing ${topicName}`,
+        content: `The results shocked me.\n\nEverything I thought I knew was wrong.\n\nHere is what actually works 👇`,
+        emoji: '🤯'
+      },
+      {
+        title: `The ${topicName} secret nobody shares`,
+        content: `I analyzed the top 1% to find patterns.\n\nOne strategy emerged that changes everything.\n\nThread 🧵👇`,
+        emoji: '🔍'
+      },
+      {
+        title: `${topicName}: What 90% get wrong`,
+        content: `Most people approach this backwards.\n\nHere is the framework that actually delivers results.`,
+        emoji: '💡'
+      },
     ],
     fear: [
-      { title: 'Warning: Stop doing this today', content: 'This common habit is costing you more than you realize.\n\nEvery day you wait compounds the problem.\n\nHere is what to do instead 👇', emoji: '⚠️' },
-      { title: 'The silent killer of progress', content: 'It creeps up slowly.\n\nBy the time you notice, the damage is done.\n\nProtect yourself now.', emoji: '🚨' },
+      {
+        title: `Stop wasting time on ${topicName}`,
+        content: `You are doing it wrong.\n\nAnd it is costing you more than you realize.\n\nHere is the fix 👇`,
+        emoji: '⚠️'
+      },
+      {
+        title: `${topicName} mistakes killing your progress`,
+        content: `These 3 errors are silent killers.\n\nFix them today or stay stuck.`,
+        emoji: '🚨'
+      },
     ],
     contrarian: [
-      { title: 'Unpopular opinion: The hype is wrong', content: 'Everyone is chasing the wrong metric.\n\nThe real winners focus on something completely different.\n\nHere is the uncomfortable truth 👇', emoji: '🎯' },
-      { title: 'Evidence > opinions', content: 'Trends come and go.\n\nData reveals what actually works.\n\nFollow the evidence, not the crowd.', emoji: '📊' },
+      {
+        title: `Unpopular opinion: ${topicName} hype is wrong`,
+        content: `Everyone is chasing the wrong thing.\n\nHere is what actually moves the needle.`,
+        emoji: '🎯'
+      },
+      {
+        title: `${topicName} advice that harms you`,
+        content: `Mainstream tips are outdated.\n\nDo this instead for 10x results.`,
+        emoji: '📊'
+      },
+    ],
+    list: [
+      {
+        title: `5 ${topicName} truths I wish I knew`,
+        content: `Learned the hard way so you do not have to.\n\nSave this thread 👇`,
+        emoji: '🧵'
+      },
+      {
+        title: `3 ${topicName} mistakes to avoid`,
+        content: `These cost me years of progress.\n\nDo not repeat them.`,
+        emoji: '⚡'
+      },
+    ],
+    story: [
+      {
+        title: `How I mastered ${topicName}`,
+        content: `From complete beginner to expert.\n\nHere is the exact playbook I used 👇`,
+        emoji: '🚀'
+      },
+      {
+        title: `${topicName} changed my life`,
+        content: `One year ago, I was clueless.\n\nHere is what happened next.`,
+        emoji: '💎'
+      },
+    ],
+    question: [
+      {
+        title: `Struggling with ${topicName}?`,
+        content: `You are not alone.\n\nHere is the system that finally worked for me.`,
+        emoji: '❓'
+      },
+      {
+        title: `Why is ${topicName} so hard?`,
+        content: `It is not your fault.\n\nYou were taught the wrong approach.`,
+        emoji: '🤔'
+      },
     ],
   };
 
-  const hookStyle = config.hookStyle || 'curiosity';
-  const hookVariations = variations[hookStyle] || variations.curiosity;
+  const hookVariations = hooks[hookStyle] || hooks.curiosity;
   const hook = hookVariations[Math.floor(Math.random() * hookVariations.length)];
 
   const slides: Array<{ id: string; title: string; content: string; emoji: string }> = [
@@ -353,24 +421,70 @@ function generateDynamicMockSlides(topic: string, numSlides: number, username: s
     },
   ];
 
-  // Generate varied middle slides
-  for (let i = 1; i < numSlides - 1; i++) {
-    const templates = [
-      { title: `Myth #${i}`, content: `Common belief: "You need more time/resources/skill"\n\nReality: You need better systems.\n\n• Prioritize ruthlessly\n• Eliminate before optimizing\n• Focus on high-leverage actions`, emoji: '💡' },
-      { title: 'The 80/20 rule', content: '80% of results come from 20% of efforts.\n\nIdentify your high-impact activities:\n\n• Audit your current approach\n• Double down on what works\n• Eliminate the rest', emoji: '🎯' },
-      { title: 'Pattern interrupt', content: 'Break the cycle with one small change.\n\n• Start with 5 minutes daily\n• Track one metric only\n• Build momentum through consistency\n\nSmall wins compound.', emoji: '⚡' },
-    ];
-    slides.push({
-      id: `slide-${i + 1}`,
-      ...templates[i % templates.length],
-    });
-  }
-
-  // CTA slide
-  const ctas = [
-    { title: 'Your move', content: `Follow @${username} for evidence-based insights.\n\nWhich myth did you believe? Comment below 👇`, emoji: '👇' },
-    { title: 'Save this', content: `This thread took hours to research.\n\nFollow @${username} before it gets buried.\n\nShare with someone who needs this 🙏`, emoji: '💾' },
+  // TOPIC-SPECIFIC value slides
+  const valueSlides = [
+    {
+      title: 'Myth #1: It takes years to learn',
+      content: `Reality: ${topicName} mastery comes from smart practice, not time.\n\n• Focus on high-impact skills first\n• Use the 80/20 principle\n• Practice with real projects\n\nQuality > Quantity`,
+      emoji: '💡'
+    },
+    {
+      title: 'The tool stack that actually works',
+      content: `Stop chasing every new tool for ${topicName}.\n\n• Pick 2-3 core tools\n• Master them completely\n• Ignore the shiny distractions\n\nDepth beats breadth every time.`,
+      emoji: '🛠️'
+    },
+    {
+      title: 'The 5-minute daily habit',
+      content: `Consistency beats intensity for ${topicName}.\n\n• 5 minutes every day beats 2 hours once a week\n• Compound growth is real\n• Small wins build momentum\n\nStart today.`,
+      emoji: '⚡'
+    },
+    {
+      title: 'What the top 1% do differently',
+      content: `They do not work harder on ${topicName}.\n\n• They systematize their approach\n• They learn from feedback loops\n• They iterate rapidly\n\nWork smart, not just hard.`,
+      emoji: '🎯'
+    },
+    {
+      title: 'Common beginner mistake',
+      content: `Trying to learn ${topicName} all at once.\n\n• Start with one concept\n• Master it completely\n• Then move to the next\n\nSequential > Parallel learning`,
+      emoji: '🚨'
+    },
+    {
+      title: 'The framework that works',
+      content: `My 3-step process for ${topicName}:\n\n1. Learn the fundamentals deeply\n2. Build real projects immediately\n3. Teach others to solidify\n\nRinse and repeat.`,
+      emoji: '🔄'
+    },
   ];
+
+  // Select appropriate number of value slides
+  const numValueSlides = numSlides - 2; // minus hook and CTA
+  const selectedValueSlides = valueSlides.slice(0, numValueSlides);
+
+  selectedValueSlides.forEach((slide, idx) => {
+    slides.push({
+      id: `slide-${idx + 2}`,
+      ...slide,
+    });
+  });
+
+  // TOPIC-SPECIFIC CTA slide
+  const ctas = [
+    {
+      title: 'Your turn',
+      content: `I post ${topicName} insights daily.\n\nFollow @${username} so you do not miss the next thread.\n\nWhich tip will you try first? 👇`,
+      emoji: '👇'
+    },
+    {
+      title: 'Save this thread',
+      content: `${topicName} mastery takes time.\n\nSave this for reference.\n\nFollow @${username} for more actionable tips 🙏`,
+      emoji: '💾'
+    },
+    {
+      title: 'Share with a friend',
+      content: `Know someone struggling with ${topicName}?\n\nTag them below 👇\n\nFollow @${username} for weekly deep dives`,
+      emoji: '📤'
+    },
+  ];
+
   slides.push({
     id: `slide-${numSlides}`,
     ...ctas[Math.floor(Math.random() * ctas.length)],

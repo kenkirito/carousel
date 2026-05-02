@@ -299,60 +299,40 @@ export async function buildDynamicPrompt(
   // Layer 4: Anti-repetition
   const avoidancePrompt = getAvoidancePrompt(userId);
 
-  const systemPrompt = `You are an elite viral content strategist who creates unique, engaging Instagram carousels.
-Your content has generated millions of views across niches.
+  const systemPrompt = `Create viral Instagram carousel content.
 
-CORE PRINCIPLES:
-1. HOOK-FIRST - First 3 seconds determine success
-2. SPECIFICITY WINS - Generic advice is ignored
-3. PATTERN INTERRUPTS - Break expectations
-4. EMOTIONAL DRIVE - Trigger curiosity, fear, or aspiration
-5. ACTIONABLE - Every slide delivers value
+RULES:
+- Hook: Stop the scroll in 3 seconds
+- Specific: Use examples from "${topic}", not generic advice
+- Actionable: Every slide gives value
+- NO fluff phrases like "unlock potential"
+- Return ONLY JSON
 
-VARIATION STYLE: ${config.hookStyle} hook, ${config.slideStructure} structure, intensity ${config.toneIntensity}/10
+STYLE: ${config.hookStyle} hook, ${tone} tone`;
 
-STRICT RULES:
-- NEVER use generic phrases like "unlock potential" or "game changer"
-- Each slide must have a unique angle
-- Use specific examples, not vague advice
-- Vary sentence structure between slides
-- Include at least one surprising fact or stat
+  const userPrompt = `Topic: "${topic}"
+Niche: ${niche}
+Slides: ${numSlides}
 
-Return ONLY valid JSON array.`;
-
-  const userPrompt = `Create a ${numSlides}-slide viral Instagram carousel.
-
-TOPIC: ${topic}
-NICHE: ${niche}
-TONE: ${tone}
-VARIATION: ${config.hookStyle} hook style, ${config.slideStructure} structure
-
-EXPANDED CONTEXT:
-Use Cases: ${enriched.useCases.join(', ')}
-Problems Solved: ${enriched.problemsSolved.join(', ')}
-Misconceptions to Bust: ${enriched.misconceptions.join(', ')}
-Trending Topics: ${context.trendingTopics.join(', ')}
-
-INSIGHTS TO INCLUDE:
-${context.insights.join('\n')}
-
-STATISTICS (use 1-2):
-${context.statistics.join('\n')}
-
-EXAMPLES FOR INSPIRATION:
-${context.examples.join('\n')}
-
-STRUCTURE REQUIREMENTS:
-SLIDE 1 (HOOK): Use ${config.hookStyle} style. Make it impossible to ignore. Max 8 words.
-${getHookInstructions(config.hookStyle)}
-
-SLIDES 2-${numSlides - 1} (VALUE): ${getStructureInstructions(config.slideStructure)}
-
-SLIDE ${numSlides} (CTA): ${getCTAInstructions(config.ctaType, username)}
+CONTEXT:
+• Problems: ${enriched.problemsSolved.slice(0, 2).join(', ')}
+• Misconceptions: ${enriched.misconceptions.slice(0, 2).join(', ')}
+• Trends: ${context.trendingTopics.slice(0, 2).join(', ')}
 
 ${avoidancePrompt}
 
-OUTPUT: Return JSON array with ${numSlides} slides. Each slide: {title, content, emoji}${getAvoidedPhrasesPrompt()}`;
+HOOK STYLE (${config.hookStyle}):
+${getHookInstructions(config.hookStyle)}
+
+STRUCTURE:
+Slide 1: Hook (max 8 words, impossible to ignore)
+Slides 2-${numSlides - 1}: Value (specific tips about "${topic}")
+Slide ${numSlides}: CTA (follow @${username}, comment hook)
+
+OUTPUT FORMAT:
+[
+  {"title": "...", "content": "...", "emoji": "🔥"}
+]`;
 
   return { prompt: userPrompt, systemPrompt, config };
 }
